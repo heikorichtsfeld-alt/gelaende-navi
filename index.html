@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gelände-Navi Winterhafen</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: Ein-Bildschirm-App. Kopfleiste · Karte (füllt) · Tafel unten mit Route und Schritten. Wegweiser-Optik wie Werkschilder. */
+:root{
+  --bg:#eef0f1; --panel:#ffffff; --ink:#1d2327; --muted:#5d686f; --line:#d5dadd;
+  --route:#e4572e; --route-ink:#ffffff; --you:#1a6fd6; --ok:#1f8a4c; --warn:#b26a00;
+  --chip:#f3f5f6; --shadow:0 -6px 24px rgba(20,30,40,.12);
+  --m-ground:#f3f2ee; --m-water:#b7d6ea; --m-water-ink:#5b8fb0; --m-bldg:#d7dade; --m-bldg-off:#e7e8e8; --m-bldg-line:#a4abb2;
+  --m-road:#ffffff; --m-road-edge:#b9bec3; --m-lane:#ffffff; --m-lane-edge:#c9cdd1; --m-label:#2a3136;
+  --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14191c; --panel:#1d2428; --ink:#e9edef; --muted:#9aa6ad; --line:#323c42;
+  --route:#ff6b3d; --route-ink:#14191c; --you:#5aa2ff; --ok:#4cc27e; --warn:#f0a63a;
+  --chip:#262f34; --shadow:0 -6px 24px rgba(0,0,0,.45);
+  --m-ground:#1f2629; --m-water:#1b3a4e; --m-water-ink:#6fa3c4; --m-bldg:#3a444b; --m-bldg-off:#2b3337; --m-bldg-line:#56616a;
+  --m-road:#4b555c; --m-road-edge:#2a3237; --m-lane:#4f5a61; --m-lane-edge:#2b3338; --m-label:#e9edef;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14191c; --panel:#1d2428; --ink:#e9edef; --muted:#9aa6ad; --line:#323c42;
+  --route:#ff6b3d; --route-ink:#14191c; --you:#5aa2ff; --ok:#4cc27e; --warn:#f0a63a;
+  --chip:#262f34; --shadow:0 -6px 24px rgba(0,0,0,.45);
+  --m-ground:#1f2629; --m-water:#1b3a4e; --m-water-ink:#6fa3c4; --m-bldg:#3a444b; --m-bldg-off:#2b3337; --m-bldg-line:#56616a;
+  --m-road:#4b555c; --m-road-edge:#2a3237; --m-lane:#4f5a61; --m-lane-edge:#2b3338; --m-label:#e9edef;
+  color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.4;overflow:hidden}
+#app{height:100%;display:grid;grid-template-rows:auto 1fr auto}
+header{display:flex;align-items:center;gap:10px;background:var(--panel);border-bottom:1px solid var(--line);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header h1{font-family:var(--f-display);font-weight:700;font-size:20px;letter-spacing:.02em;margin:0;text-transform:uppercase}
+header .sub{color:var(--muted);font-size:13px;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#map{position:relative;overflow:hidden;touch-action:none;background:var(--m-ground);cursor:grab}
+.lbl-water{fill:var(--m-water-ink);font-family:var(--f-display);font-weight:600;font-style:italic;letter-spacing:.25em;text-transform:uppercase}
+.lbl-road{fill:var(--muted);font-family:var(--f-body);font-weight:600;letter-spacing:.06em}
+.pinlbl{fill:var(--m-label);stroke:var(--m-ground);stroke-width:4;paint-order:stroke;font-family:var(--f-body);font-weight:600;font-size:15px}
+#map:active{cursor:grabbing}
+#map > svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.ctrls{position:absolute;right:max(10px,env(safe-area-inset-right,0px));top:10px;display:flex;flex-direction:column;gap:8px}
+.ctrls button{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  font:600 20px/1 var(--f-display);box-shadow:0 2px 8px rgba(0,0,0,.15);cursor:pointer;display:grid;place-items:center}
+.ctrls button svg{width:22px;height:22px}
+.gps-pill{position:absolute;left:max(10px,env(safe-area-inset-left,0px));top:10px;max-width:calc(100% - 80px);background:var(--panel);
+  border:1px solid var(--line);border-radius:999px;padding:6px 12px 6px 10px;font-size:13px;display:flex;gap:8px;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.gps-pill .dot{width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none}
+.gps-pill.live .dot{background:var(--you);box-shadow:0 0 0 4px color-mix(in srgb,var(--you) 25%,transparent)}
+.gps-pill.warn .dot{background:var(--warn)}
+#panel{background:var(--panel);box-shadow:var(--shadow);border-radius:16px 16px 0 0;max-height:42vh;overflow:auto;
+  padding-top:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.eyebrow{font:600 12px/1 var(--f-body);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.choices{display:grid;grid-template-columns:1fr;gap:8px}
+@media (min-width:600px){.choices{grid-template-columns:repeat(3,1fr)}}
+.choice{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--chip);color:var(--ink);
+  text-align:left;font:500 16px/1.2 var(--f-body);cursor:pointer;min-height:56px}
+.choice:hover{border-color:var(--route)}
+.choice small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.badge{flex:none;width:38px;height:38px;border-radius:8px;display:grid;place-items:center;background:var(--ink);color:var(--panel);
+  font:700 22px/1 var(--f-display)}
+.badge.exit{font-size:13px;letter-spacing:.03em}
+.badge.dest{background:var(--route);color:var(--route-ink)}
+.routehead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.routehead .arrow{color:var(--muted);font:600 20px var(--f-display)}
+.routehead .names{min-width:0;flex:1 1 200px}
+.routehead .names b{font:700 22px/1.1 var(--f-display);letter-spacing:.01em;display:block}
+.routehead .names span{color:var(--muted);font-size:14px}
+.status{margin:12px 0 4px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.status .big{font:700 30px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.status .note{color:var(--muted);font-size:14px}
+ol.steps{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:2px}
+ol.steps li button{width:100%;display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center;text-align:left;padding:9px 8px;
+  border:0;border-radius:10px;background:transparent;color:var(--ink);font:400 15px/1.3 var(--f-body);cursor:pointer}
+ol.steps li button:hover,ol.steps li.on button{background:var(--chip)}
+ol.steps li.done button{color:var(--muted)}
+ol.steps .ico{width:30px;height:30px;border-radius:8px;background:var(--chip);display:grid;place-items:center;color:var(--ink)}
+ol.steps li.on .ico{background:var(--route);color:var(--route-ink)}
+ol.steps .ico svg{width:18px;height:18px}
+ol.steps .m{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:10px;padding:10px 14px;font:600 15px var(--f-body);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn.primary{background:var(--route);border-color:var(--route);color:var(--route-ink)}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--you);outline-offset:2px}
+#arrived{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--ok);color:#fff;border-radius:16px;padding:18px 22px;
+  text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.25);width:min(320px,calc(100% - 40px))}
+#arrived b{display:block;font:700 26px/1.1 var(--f-display);margin-bottom:4px}
+/* Ganzseitige Ansichten: Einmessen, QR-Schilder */
+.page{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:20;
+  padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.page .inner{max-width:880px;margin:0 auto;display:grid;gap:16px}
+.page h2{font:700 28px/1.1 var(--f-display);margin:0;text-transform:uppercase;letter-spacing:.02em;text-wrap:balance}
+.page p{margin:0;max-width:65ch;color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px;min-width:0}
+.calib{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.calib .head{display:flex;gap:10px;align-items:center}
+.calib input{width:100%;font:500 15px var(--f-body);padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-variant-numeric:tabular-nums}
+.calib .msg{font-size:13px;color:var(--muted);min-height:1.3em}
+pre.out{margin:0;padding:12px;border-radius:10px;background:var(--chip);overflow-x:auto;font:500 14px/1.5 ui-monospace,Menlo,Consolas,monospace}
+.signs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.sign{background:#fff;color:#111;border:2px solid #111;border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center;text-align:center;break-inside:avoid}
+.sign .lt{display:flex;align-items:center;gap:10px}
+.sign .L{width:52px;height:52px;border-radius:10px;background:#111;color:#fff;display:grid;place-items:center;font:700 34px/1 var(--f-display)}
+.sign .t{font:700 22px/1.1 var(--f-display);text-transform:uppercase}
+.sign .q{width:190px;height:190px}
+.sign .q svg{width:100%;height:100%}
+.sign small{font-size:12px;color:#444;word-break:break-all}
+.field{display:grid;gap:6px}
+.field label{font-size:13px;color:var(--muted)}
+.field input{font:500 15px var(--f-body);padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);width:100%}
+@media print{body{overflow:visible} #app{display:none} .page{position:static;padding:0} .noprint{display:none!important} .signs{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@keyframes flow{to{stroke-dashoffset:-40}}
+.flow{animation:flow 1.2s linear infinite}
+@keyframes pulse{0%{r:9;opacity:.55}100%{r:26;opacity:0}}
+.pulse{animation:pulse 1.8s ease-out infinite}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} body{margin:0} [hidden]{display:none!important}</style>
+</head>
+<body>
+
+
+<div id="app">
+  <header>
+    <h1>Gelände-Navi</h1>
+    <span class="sub" id="hsub">Werftgelände Winterhafen</span>
+  </header>
+  <div id="map" aria-label="Geländeplan">
+    <svg id="svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+      <g id="base"><rect x="-400" y="-400" width="2360" height="1790" fill="var(--m-ground)"/><g fill="var(--m-water)"><path d="M1554.4 556.4 L1495.2 513.2 L1492.4 509.6 L1494.8 500.8 L1456.0 473.2 L1446.4 478.8 L1438.4 478.0 L1372.0 532.4 L1357.6 534.8 L1260.8 481.2 L1019.2 328.4 L945.6 302.0 L909.6 301.2 L846.8 412.0 L843.2 414.8 L835.2 412.4 L828.0 418.8 L557.6 259.6 L288.8 108.4 L274.4 109.2 L250.4 144.4 L216.0 143.6 L8.0 110.0 L5.2 107.2 L5.2 20.8 L8.0 18.0 L48.8 17.2 L645.6 14.0 L727.2 78.0 L788.0 107.6 L944.8 150.8 L1047.2 174.8 L1124.0 199.6 L1169.6 210.8 L1195.6 198.4 L1196.4 192.0 L1192.4 184.0 L1093.6 89.2 L1088.8 81.2 L1038.4 38.8 L1018.8 19.2 L1016.8 12.4 L1551.2 7.6 L1554.0 10.4 L1555.6 60.0 L1557.2 540.0 L1559.6 544.0 L1554.4 556.4Z"/><path d="M1348.8 978.8 L1342.4 978.0 L1342.0 973.6 L1398.4 954.8 L1472.0 936.4 L1488.8 939.6 L1514.4 950.0 L1537.2 973.6 L1534.4 976.4 L1348.8 978.8Z"/></g><path d="M340.0 980.0 L524.0 926.0 Q708.0 872.0 868.0 822.0 L868.0 822.0 Q1028.0 772.0 1108.0 750.8 L1108.0 750.8 Q1188.0 729.6 1244.0 724.0 L1244.0 724.0 Q1300.0 718.4 1356.0 723.2 L1356.0 723.2 Q1412.0 728.0 1452.0 748.0 L1452.0 748.0 Q1492.0 768.0 1526.0 800.0 L1560.0 832.0" fill="none" stroke="var(--m-road-edge)" stroke-width="30"/><path d="M340.0 980.0 L524.0 926.0 Q708.0 872.0 868.0 822.0 L868.0 822.0 Q1028.0 772.0 1108.0 750.8 L1108.0 750.8 Q1188.0 729.6 1244.0 724.0 L1244.0 724.0 Q1300.0 718.4 1356.0 723.2 L1356.0 723.2 Q1412.0 728.0 1452.0 748.0 L1452.0 748.0 Q1492.0 768.0 1526.0 800.0 L1560.0 832.0" fill="none" stroke="var(--m-road)" stroke-width="26"/><g fill="var(--m-bldg-off)" stroke="var(--m-bldg-line)" stroke-width="1" stroke-linejoin="round"><path d="M1052.2 775.0 L1046.9 771.4 L1049.6 759.6 L1109.2 743.2 L1109.6 754.8Z"/><path d="M1448.4 778.2 L1411.2 753.0 L1415.5 746.6 L1450.4 757.2 L1457.1 765.4Z"/><path d="M885.0 982.6 L708.8 982.8 L686.8 913.6 L1096.8 782.8 L1146.4 918.0 L1239.3 916.4 L1252.3 925.2 L1259.8 914.2 L1281.6 929.0 L1278.0 944.8 L1272.0 947.6 L1261.6 946.8 L1259.8 935.3 L1255.1 942.2 L1244.0 938.8 L1239.2 928.4 L1151.3 929.2 L1148.5 933.4 L1156.5 938.9 L1171.0 933.8 L1178.4 938.8 L1231.5 936.5 L1242.0 943.6 L1228.0 950.0 L1159.0 946.1 L1154.3 953.0 L1161.9 974.2 L1157.8 980.4Z"/><path d="M552.0 942.0 L547.2 933.2 L537.6 935.6 L534.0 925.6 L545.6 920.4 L550.4 928.4 L562.5 928.4 L569.6 918.1 L568.4 912.8 L576.0 911.6 L581.2 925.6Z"/><path d="M1478.7 981.8 L1468.0 974.5 L1424.3 978.7 L1416.9 973.6 L1408.1 979.2 L1393.8 969.5 L1387.4 979.0 L1373.5 969.5 L1378.6 962.1 L1424.6 953.1 L1429.4 945.9 L1437.1 951.2 L1440.7 945.8 L1470.4 938.0 L1506.4 947.6 L1510.4 960.4 L1529.2 961.6 L1528.0 977.2 L1507.2 973.2 L1492.1 978.5 L1484.5 973.3Z"/><path d="M662.7 983.6 L558.6 983.6 L552.7 979.5 L568.8 969.2 L645.6 946.8 L655.5 970.7 L666.4 978.1Z"/></g><g fill="var(--m-bldg)" stroke="var(--m-bldg-line)" stroke-width="1.2" stroke-linejoin="round"><path d="M900.8 46.8 L847.9 46.0 L840.9 41.2 L816.0 46.0 L811.6 35.2 L850.4 11.6 L984.0 12.4 L1004.9 18.6 L999.3 26.8 L905.5 26.0 L895.9 19.5 L858.8 25.6 L871.2 34.0 L920.4 36.8 L919.2 42.8Z"/><path d="M1128.8 182.8 L956.4 147.6 L732.3 42.9 L696.0 17.9 L711.8 14.1 L836.4 85.3 L1080.8 162.8 L1136.8 169.2 L1138.0 175.2Z"/><path d="M135.2 185.2 L108.8 183.6 L108.4 169.6 L123.2 160.4 L129.6 173.2 L131.6 164.0 L137.6 162.8 L146.0 176.8Z"/><path d="M336.8 191.6 L329.6 179.6 L320.1 186.2 L309.8 179.1 L303.3 180.8 L309.8 171.3 L304.4 162.4 L318.6 165.4 L322.9 159.1 L326.6 174.1 L333.5 164.0 L353.7 177.8 L352.0 184.4Z"/><path d="M397.6 237.2 L384.4 234.4 L386.4 223.6 L373.7 227.0 L355.8 214.8 L347.2 214.8 L344.8 206.0 L336.8 209.2 L332.7 203.3 L339.8 192.8 L355.9 193.3 L364.0 181.3 L368.8 195.6 L377.3 189.0 L400.8 205.0 L412.1 226.6 L405.8 235.8Z"/><path d="M40.8 250.8 L30.5 238.1 L23.0 249.2 L6.8 244.8 L4.4 225.3 L11.5 214.8 L38.0 218.4 L36.8 226.0 L26.8 227.2 L42.8 232.0Z"/><path d="M84.8 290.8 L77.6 276.4 L11.0 272.3 L6.0 269.0 L6.0 260.8 L76.5 265.3 L87.5 272.7Z"/><path d="M355.9 343.7 L312.2 313.9 L306.3 303.0 L310.6 296.7 L322.0 304.5 L328.7 294.8 L322.8 290.7 L322.8 288.2 L338.1 265.7 L360.6 281.0 L357.0 294.0 L361.9 286.8 L368.8 287.6 L373.2 302.4 L384.8 302.8 L388.4 309.6 L377.2 318.4 L380.9 324.8 L371.8 338.1Z"/><path d="M42.0 366.9 L28.0 366.0 L24.3 352.5 L17.3 362.7 L6.3 355.2 L14.8 342.8 L14.0 318.4 L26.5 318.0 L33.7 307.4 L44.4 310.4 L49.2 328.8 L30.6 326.6 L45.2 338.4 L22.0 343.2 L34.4 351.6 L50.8 348.8 L50.3 354.8Z"/><path d="M336.0 897.3 L252.4 840.4 L295.8 776.5 L264.5 755.1 L274.8 740.0 L264.8 733.2 L200.8 827.2 L131.9 780.3 L163.8 733.4 L138.7 716.3 L145.2 695.9 L100.2 665.3 L117.1 640.5 L82.8 617.1 L138.8 535.0 L220.3 590.5 L231.8 573.6 L220.3 574.0 L120.9 506.3 L112.6 509.3 L63.5 581.4 L29.7 558.3 L14.8 532.8 L19.6 515.2 L11.6 503.5 L62.1 429.2 L66.7 411.6 L114.6 341.3 L124.4 339.2 L129.2 318.9 L140.1 326.3 L136.8 341.2 L160.0 342.9 L165.5 334.8 L176.1 342.0 L191.2 342.0 L208.4 371.2 L197.8 375.5 L190.9 370.8 L137.2 373.8 L184.0 405.6 L158.0 443.8 L160.0 456.2 L181.9 471.1 L219.9 415.3 L224.5 414.7 L280.5 452.9 L274.2 462.2 L282.1 474.8 L286.9 467.8 L294.8 473.2 L261.0 522.8 L264.8 530.8 L280.8 533.2 L284.4 512.8 L296.0 505.2 L342.4 507.6 L344.8 511.4 L339.4 519.4 L316.2 524.3 L309.7 519.9 L314.7 532.1 L304.9 525.4 L294.9 540.1 L504.9 681.6 L367.7 877.2 L355.4 868.8Z"/><path d="M21.3 459.9 L18.3 454.3 L86.7 340.0 L80.8 341.2 L68.9 390.1Z"/><path d="M334.7 436.1 L293.4 408.0 L292.0 402.0 L288.5 413.5 L236.9 378.4 L230.9 356.7 L242.4 364.5 L253.2 358.4 L244.0 358.8 L235.6 344.0 L245.6 342.0 L249.6 352.4 L260.0 344.4 L264.4 371.2 L285.6 377.2 L289.3 394.0 L297.0 382.6 L302.8 386.5 L303.3 397.8 L310.0 387.9 L338.3 407.2 L348.6 399.7 L356.9 403.6Z"/><path d="M1244.3 615.8 L1187.6 577.2 L1167.4 574.5 L1036.3 489.4 L1018.3 502.0 L980.3 476.2 L983.5 465.2 L968.0 454.6 L955.5 472.9 L909.4 442.8 L919.9 427.3 L882.0 401.5 L908.3 362.9 L911.6 344.0 L926.7 343.6 L944.1 355.4 L955.2 373.2 L964.8 366.8 L968.0 379.6 L977.0 373.3 L994.7 385.4 L994.4 393.2 L1002.6 387.8 L1022.3 401.2 L1020.0 410.8 L1042.7 398.7 L1284.4 563.2 L1275.5 548.3 L1264.8 564.0 L1268.6 580.1Z"/><path d="M756.8 458.9 L687.5 411.7 L689.2 404.8 L682.8 394.4 L695.3 396.3 L719.6 360.6 L742.9 376.5 L745.6 385.2 L763.2 385.2 L793.1 405.6Z"/><path d="M716.9 755.8 L686.2 734.9 L668.8 733.2 L645.4 734.9 L638.4 745.1 L499.8 650.7 L525.9 612.3 L527.2 598.5 L515.3 590.4 L491.9 624.8 L497.2 623.8 L368.1 535.9 L392.2 500.6 L350.2 471.9 L380.4 427.5 L386.8 422.4 L386.4 416.4 L378.6 415.3 L390.4 397.8 L400.2 404.5 L423.3 370.6 L472.9 404.4 L483.7 405.3 L514.6 360.1 L528.4 369.5 L528.0 379.0 L536.9 365.9 L723.1 486.0 L682.6 548.0 L621.5 506.5 L615.7 515.1 L723.4 588.4 L736.4 569.3 L701.2 545.3 L733.3 498.2 L740.6 496.4 L793.1 532.2 L844.5 456.7 L1034.5 586.1 L1053.1 558.8 L1104.3 558.8 L1127.2 574.3 L1100.8 570.8 L1077.7 577.6 L1137.4 618.2 L1136.4 629.6 L1144.0 641.0 L1124.1 670.3 L1121.9 672.0 L1115.1 667.4 L1082.0 716.0 L946.1 631.1 L1017.1 687.1 L981.1 739.9 L767.5 594.4 L756.2 610.9 L787.9 632.5 L789.8 642.4 L738.3 718.2 L740.0 721.9Z"/><path d="M39.5 404.2 L7.6 399.2 L6.7 378.8 L14.9 366.8 L28.9 376.3 L33.4 369.9 L48.4 372.0 L47.2 378.8 L25.2 387.2 L28.0 392.4 L46.6 393.7Z"/><path d="M1481.4 522.1 L1468.2 513.1 L1457.5 518.9 L1436.0 504.2 L1434.0 496.0 L1443.2 494.8 L1455.2 477.2 L1461.8 478.5 L1492.4 499.4 L1491.6 514.4Z"/><path d="M1434.9 585.4 L1479.3 523.2 L1502.2 539.6 L1457.8 601.8Z"/><path d="M1424.7 558.6 L1392.6 536.6 L1400.9 524.5 L1433.0 546.5Z"/><path d="M1497.5 593.6 L1479.3 581.2 L1501.7 548.4 L1519.9 560.8Z"/><path d="M10.6 605.4 L26.5 596.3 L50.8 638.7 L34.8 647.8Z"/><path d="M1184.4 659.4 L1145.3 632.8 L1161.2 609.4 L1200.3 636.0Z"/><path d="M1402.5 754.7 L1385.1 742.9 L1383.6 732.5 L1371.3 724.2 L1287.6 698.4 L1309.6 616.4 L1322.6 611.4 L1360.8 633.1 L1377.6 629.2 L1373.5 623.4 L1422.9 657.0 L1439.5 632.6 L1499.1 673.1 L1497.6 684.5 L1510.5 693.2 L1463.6 748.5 L1434.2 748.0 L1446.7 729.6 L1425.0 745.4 L1413.9 737.9Z"/><path d="M1162.7 676.0 L1141.4 661.5 L1153.6 643.8 L1176.5 659.4 L1166.0 674.8Z"/><path d="M405.1 932.6 L379.9 915.4 L516.6 709.8 L537.6 701.5 L578.8 729.6 L577.8 748.8 L457.5 925.4 L451.3 926.8 L422.5 907.2Z"/><path d="M880.0 768.4 L873.2 746.2 L867.1 755.1 L858.1 749.0 L860.8 731.6 L934.8 732.0 L934.4 741.2 L899.6 744.8 L911.2 761.2Z"/><path d="M530.0 914.7 L524.3 910.8 L526.0 899.2 L556.1 889.4 L636.3 771.7 L697.3 813.2 L711.4 813.2 L737.7 831.1 L732.3 839.0 L638.0 876.6Z"/><path d="M205.6 910.6 L174.1 849.5 L191.6 840.5 L223.1 901.6Z"/><path d="M15.7 889.3 L5.2 882.1 L5.2 875.2 L21.8 875.2 L6.2 864.6 L8.9 852.0 L20.2 859.7 L58.7 855.0 L52.3 864.3 L35.0 863.6 L27.0 875.2 L36.0 875.6 L36.8 883.6Z"/><path d="M244.8 980.4 L212.7 920.4 L251.6 863.2 L314.8 906.2 L288.0 945.6 L307.6 958.9Z"/></g><text x="1060" y="215" transform="rotate(21 1060 215)" class="lbl-water" font-size="26" text-anchor="middle">Winterhafen</text><text x="760" y="935" transform="rotate(-16 760 935)" class="lbl-road" font-size="15" text-anchor="middle">Industriezeile</text></g>
+      <g id="loop"></g>
+      <g id="route"></g>
+      <g id="pins"></g>
+      <g id="me"></g>
+    </svg>
+    <div class="gps-pill" id="gps"><span class="dot"></span><span id="gpstxt">Plan-Ansicht</span></div>
+    <div class="ctrls">
+      <button id="zin" aria-label="Hineinzoomen">+</button>
+      <button id="zout" aria-label="Herauszoomen">−</button>
+      <button id="fit" aria-label="Ganze Route zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button id="locate" aria-label="Meinen Standort zeigen" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+    </div>
+    <div id="arrived" hidden role="status"><b id="arrT">Angekommen</b><span id="arrS"></span></div>
+  </div>
+  <section id="panel" aria-live="polite"></section>
+</div>
+
+<div class="page" id="pgCalib" hidden>
+  <div class="inner">
+    <div class="row noprint" style="margin:0"><a class="btn" href="#">← Zur Karte</a></div>
+    <h2>Punkte einmessen</h2>
+    <p>Damit das Handy seinen Standort auf dem Plan zeigen kann, braucht die Seite die GPS-Koordinaten von mindestens zwei Punkten, besser von allen vier. Entweder vor Ort bei jedem Punkt auf „Hier stehe ich“ tippen, oder in Google Maps mit der rechten Maustaste auf den Punkt klicken, die Koordinaten kopieren und hier einfügen.</p>
+    <div class="calib" id="calibList"></div>
+    <div class="card">
+      <div class="row" style="margin:0">
+        <button class="btn primary" id="calSave">Übernehmen und auf diesem Gerät testen</button>
+        <button class="btn" id="calCopy">Werte kopieren</button>
+        <button class="btn" id="calReset">Lokale Werte löschen</button>
+      </div>
+      <div class="calib msg" id="calInfo"></div>
+      <pre class="out" id="calOut"></pre>
+      <p style="font-size:14px">Damit alle Besucher den Standort sehen, die kopierten Werte in der Datei im Abschnitt <b>SITE_POINTS</b> eintragen, oder an Claude schicken.</p>
+    </div>
+  </div>
+</div>
+
+<div class="page" id="pgQR" hidden>
+  <div class="inner">
+    <div class="row noprint" style="margin:0"><a class="btn" href="#">← Zur Karte</a></div>
+    <h2>QR-Schilder</h2>
+    <p class="noprint">Die Codes verweisen auf die Adresse unten. Wenn die Seite auf eurer Website liegt, stimmt sie automatisch. Zum Drucken im Browser „Drucken“ wählen (Strg+P), es werden nur die Schilder gedruckt.</p>
+    <div class="field noprint"><label for="qrBase">Adresse der Seite</label><input id="qrBase" type="url" inputmode="url"></div>
+    <div class="signs" id="signs"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';document.head.appendChild(s)"></script>
+<script>
+/* ===================== KONFIGURATION =====================
+   GPS-Koordinaten der Punkte (Breite, Länge). Solange hier null steht,
+   zeigt die Seite nur den Plan mit Route, ohne Live-Standort.
+   Beispiel:  A: [48.312345, 14.312345],                      */
+const SITE_POINTS = {
+  A:    [48.317701, 14.312504],
+  B:    [48.317720, 14.317008],
+  C:    [48.316797, 14.316219],
+  EXIT: [48.318677, 14.311402],
+};
+/* ========================================================= */
+
+const MAP_W = 1560, MAP_H = 988;
+const P = {"A": [298.4, 534.4], "a1": [464.0, 636.0], "a2": [668.0, 780.0], "K1": [702.4, 804.0], "c0": [836.0, 784.0], "C": [893.6, 776.0], "c2": [1092.0, 721.6], "c3": [1216.0, 684.0], "K2": [1245.6, 638.4], "B": [1064.0, 521.6], "b1": [932.0, 478.4], "b2": [840.0, 444.0], "b3": [772.0, 492.0], "b4": [604.0, 400.0], "b5": [436.0, 306.4], "b6": [344.0, 449.6], "b7": [232.0, 392.0], "EXIT": [184.0, 308.0]};                 // Wegpunkte in Plan-Pixeln
+const PLACES = {
+  A:    {mark:'A', name:'Standort A',   hint:'Treffpunkt'},
+  B:    {mark:'B', name:'Warenannahme', hint:'Anlieferung'},
+  C:    {mark:'C', name:'Blechlager',   hint:'Lager'},
+  EXIT: {mark:'EXIT', name:'Ausfahrt',  hint:'Gelände verlassen'},
+};
+const LOOP = ['A','a1','a2','K1','c0','C','c2','c3','K2','B','b1','b2','b3','b4','b5','b6','b7','EXIT'];
+const ROUTES = {
+  'A-B':    LOOP.slice(0, LOOP.indexOf('B')+1),
+  'A-C':    LOOP.slice(0, LOOP.indexOf('C')+1),
+  'B-EXIT': LOOP.slice(LOOP.indexOf('B')),
+  'C-EXIT': LOOP.slice(LOOP.indexOf('C')),
+};
+const ALLOWED = {A:['B','C'], B:['EXIT'], C:['EXIT']};
+const ARRIVE_M = 15, OFFROUTE_M = 30, SNAP_M = 35;
+
+const $ = s => document.querySelector(s);
+const svg = $('#svg'), mapEl = $('#map'), NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs={}, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- Georeferenz (Ähnlichkeitstransformation GPS → Plan) ---------- */
+function loadLocalPoints(){ try { return JSON.parse(localStorage.getItem('navPoints')||'null'); } catch(e){ return null; } }
+function activePoints(){ return Object.assign({}, SITE_POINTS, loadLocalPoints()||{}); }
+let GEO = null;
+function buildGeo(){
+  const pts = activePoints(); const used = Object.keys(PLACES).filter(k => Array.isArray(pts[k]) && pts[k].length===2);
+  if (used.length < 2) { GEO = null; return; }
+  const lat0 = used.reduce((s,k)=>s+pts[k][0],0)/used.length, lon0 = used.reduce((s,k)=>s+pts[k][1],0)/used.length;
+  const kx = Math.cos(lat0*Math.PI/180)*111320, ky = 110540;
+  const m = used.map(k => [(pts[k][1]-lon0)*kx, (pts[k][0]-lat0)*ky]);   // Meter Ost/Nord
+  const q = used.map(k => [P[k][0], -P[k][1]]);                             // Plan, y nach oben
+  const mm = m.reduce((s,v)=>[s[0]+v[0]/m.length,s[1]+v[1]/m.length],[0,0]);
+  const qm = q.reduce((s,v)=>[s[0]+v[0]/q.length,s[1]+v[1]/q.length],[0,0]);
+  let nr=0, ni=0, d=0;
+  for (let i=0;i<m.length;i++){ const a=[m[i][0]-mm[0], m[i][1]-mm[1]], b=[q[i][0]-qm[0], q[i][1]-qm[1]];
+    nr += b[0]*a[0] + b[1]*a[1]; ni += b[1]*a[0] - b[0]*a[1]; d += a[0]*a[0] + a[1]*a[1]; }
+  if (d < 1) { GEO = null; return; }
+  const ar = nr/d, ai = ni/d; const br = qm[0] - (ar*mm[0] - ai*mm[1]), bi = qm[1] - (ar*mm[1] + ai*mm[0]);
+  const scale = Math.hypot(ar, ai);
+  const toPx = (lat, lon) => { const x=(lon-lon0)*kx, y=(lat-lat0)*ky; return [ar*x - ai*y + br, -(ar*y + ai*x + bi)]; };
+  const res = used.map(k => { const p = toPx(pts[k][0], pts[k][1]); return {k, lat:pts[k][0], lon:pts[k][1], dx:P[k][0]-p[0], dy:P[k][1]-p[1]}; });
+  const resid = res.map(r => Math.hypot(r.dx, r.dy) / scale);
+  // Restfehler mit inverser Distanzgewichtung verteilen: an jedem Passpunkt exakt, dazwischen weich
+  const warp = (lat, lon) => { const p = toPx(lat, lon); let sw = 0, cx = 0, cy = 0;
+    for (const r of res){ const d = Math.hypot((lon-r.lon)*kx, (lat-r.lat)*ky); if (d < 0.5) return [P[r.k][0], P[r.k][1]];
+      const w = 1/(d*d); sw += w; cx += w*r.dx; cy += w*r.dy; }
+    return [p[0] + cx/sw, p[1] + cy/sw]; };
+  GEO = {toPx: warp, scale, n: used.length, maxResid: Math.max(...resid)};
+}
+
+/* ---------- Kartenansicht: Verschieben und Zoomen ---------- */
+let vb = {x:0, y:0, w:MAP_W, h:MAP_H};
+function applyVB(){ svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`); }
+function box(){ const r = mapEl.getBoundingClientRect(); return {w:Math.max(1,r.width), h:Math.max(1,r.height), l:r.left, t:r.top}; }
+function fitBounds(x0,y0,x1,y1,pad=40){
+  fitTarget = [x0,y0,x1,y1,pad];
+  const b = box(); let w = (x1-x0)+2*pad, h = (y1-y0)+2*pad; const ar = b.w/b.h;
+  if (w/h > ar) h = w/ar; else w = h*ar;
+  vb = {x:(x0+x1)/2 - w/2, y:(y0+y1)/2 - h/2, w, h}; clampVB(); applyVB();
+}
+function clampVB(){
+  const b = box(), ar = b.w/b.h; vb.w = Math.min(Math.max(vb.w, 120), MAP_W*1.4); vb.h = vb.w/ar;
+  const cx = vb.x + vb.w/2, cy = vb.y + vb.h/2;
+  const nx = Math.min(Math.max(cx, 0), MAP_W), ny = Math.min(Math.max(cy, 0), MAP_H);
+  vb.x = nx - vb.w/2; vb.y = ny - vb.h/2;
+}
+function zoomAt(sx, sy, f){
+  const b = box(); const mx = vb.x + sx/b.w*vb.w, my = vb.y + sy/b.h*vb.h;
+  vb.w /= f; vb.h /= f; clampVB(); vb.x = mx - sx/b.w*vb.w; vb.y = my - sy/b.h*vb.h; clampVB(); applyVB(); follow = false; fitTarget = null;
+}
+const ptrs = new Map(); let pinch = null;
+mapEl.addEventListener('pointerdown', e => { if (e.target.closest('.ctrls,.gps-pill,#arrived')) return; mapEl.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY}); pinch = null; });
+mapEl.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return; const prev = ptrs.get(e.pointerId); const b = box();
+  ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (ptrs.size === 1){ vb.x -= (e.clientX-prev.x)/b.w*vb.w; vb.y -= (e.clientY-prev.y)/b.h*vb.h; clampVB(); applyVB(); follow = false; fitTarget = null; }
+  else if (ptrs.size === 2){
+    const [a,c] = [...ptrs.values()]; const d = Math.hypot(a.x-c.x, a.y-c.y), mx = (a.x+c.x)/2 - b.l, my = (a.y+c.y)/2 - b.t;
+    if (pinch){ zoomAt(mx, my, d/pinch.d); vb.x -= (mx-pinch.mx)/b.w*vb.w; vb.y -= (my-pinch.my)/b.h*vb.h; clampVB(); applyVB(); }
+    pinch = {d, mx, my};
+  }
+});
+['pointerup','pointercancel'].forEach(t => mapEl.addEventListener(t, e => { ptrs.delete(e.pointerId); pinch = null; }));
+mapEl.addEventListener('wheel', e => { e.preventDefault(); const b = box(); zoomAt(e.clientX-b.l, e.clientY-b.t, e.deltaY < 0 ? 1.2 : 1/1.2); }, {passive:false});
+$('#zin').onclick = () => { const b = box(); zoomAt(b.w/2, b.h/2, 1.4); };
+$('#zout').onclick = () => { const b = box(); zoomAt(b.w/2, b.h/2, 1/1.4); };
+$('#fit').onclick = () => { follow = false; fitRoute(); };
+let lastBox = null, fitTarget = null;
+function refit(){ if (fitTarget) fitBounds(...fitTarget); }
+new ResizeObserver(() => { const b = box(); if (lastBox && (Math.abs(b.h-lastBox.h) > 2 || Math.abs(b.w-lastBox.w) > 2)) {
+  if (fitTarget && !follow) refit(); else { const cx = vb.x+vb.w/2, cy = vb.y+vb.h/2; vb.h = vb.w*b.h/b.w; vb.x = cx-vb.w/2; vb.y = cy-vb.h/2; clampVB(); applyVB(); } }
+  lastBox = b; }).observe(mapEl);
+
+/* ---------- Zeichnen ---------- */
+const poly = keys => keys.map(k => P[k]);
+const pathD = pts => 'M' + pts.map(p => p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L');
+// gerundete Ecken: an jedem Knick ein Bogen mit bis zu 28 px Radius
+const smoothD = (pts, R=28) => { let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for (let i=1;i<pts.length-1;i++){ const [a,b,c] = [pts[i-1],pts[i],pts[i+1]];
+    const l1 = Math.hypot(a[0]-b[0],a[1]-b[1]), l2 = Math.hypot(c[0]-b[0],c[1]-b[1]); const r = Math.min(R, l1/2, l2/2);
+    const p = [b[0]+(a[0]-b[0])/l1*r, b[1]+(a[1]-b[1])/l1*r], q = [b[0]+(c[0]-b[0])/l2*r, b[1]+(c[1]-b[1])/l2*r];
+    d += ` L${p[0].toFixed(1)} ${p[1].toFixed(1)} Q${b[0].toFixed(1)} ${b[1].toFixed(1)} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`; }
+  const z = pts[pts.length-1]; return d + ` L${z[0].toFixed(1)} ${z[1].toFixed(1)}`; };
+function arrowsAlong(pts, every, size, g, fill){
+  let carry = every*0.5;
+  for (let i=1;i<pts.length;i++){
+    const [x0,y0] = pts[i-1], [x1,y1] = pts[i]; const L = Math.hypot(x1-x0, y1-y0); const ux=(x1-x0)/L, uy=(y1-y0)/L;
+    let s = carry;
+    while (s < L - size){ const x = x0+ux*s, y = y0+uy*s;
+      el('path', {d:`M${x+ux*size} ${y+uy*size} L${x-ux*size*0.6+uy*size*0.8} ${y-uy*size*0.6-ux*size*0.8} L${x-ux*size*0.6-uy*size*0.8} ${y-uy*size*0.6+ux*size*0.8}Z`, fill}, g);
+      s += every; }
+    carry = s - L;
+  }
+}
+function drawLoop(){
+  const g = $('#loop'); g.innerHTML = '';
+  const d = smoothD(poly(LOOP));
+  el('path', {d, fill:'none', stroke:'var(--m-lane-edge)', 'stroke-width':24, 'stroke-linecap':'round', 'stroke-linejoin':'round'}, g);
+  el('path', {d, fill:'none', stroke:'var(--m-lane)', 'stroke-width':20, 'stroke-linecap':'round', 'stroke-linejoin':'round'}, g);
+  el('path', {d, fill:'none', stroke:'var(--m-lane-edge)', 'stroke-width':1.5, 'stroke-dasharray':'10 12'}, g);
+}
+function drawPins(from, to){
+  const g = $('#pins'); g.innerHTML = '';
+  for (const k of Object.keys(PLACES)){
+    const [x,y] = P[k]; const isTo = k===to, isFrom = k===from; const r = isTo||isFrom ? 17 : 13;
+    const gg = el('g', {transform:`translate(${x} ${y})`, style:'cursor:pointer'}, g);
+    if (isTo) el('circle', {r:9, fill:'var(--route)', class:'pulse'}, gg);
+    el('circle', {r, fill: isTo ? 'var(--route)' : '#1d2327', stroke:'#fff', 'stroke-width':3}, gg);
+    const t = el('text', {'text-anchor':'middle', 'dominant-baseline':'central', fill:'#fff', 'font-family':'Barlow Condensed, Arial Narrow, sans-serif', 'font-weight':700, 'font-size': k==='EXIT' ? 10 : (r*1.25)}, gg);
+    t.textContent = k==='EXIT' ? 'EXIT' : PLACES[k].mark;
+    const lab = el('text', {x:r+6, y:5, class:'pinlbl'}, gg);
+    lab.textContent = PLACES[k].name;
+  }
+}
+let current = null;   // {from,to,keys,pts,cum,total}
+function drawRoute(){
+  const g = $('#route'); g.innerHTML = ''; if (!current) return;
+  const d = smoothD(current.pts);
+  el('path', {d, fill:'none', stroke:'var(--m-lane)', 'stroke-width':18, 'stroke-linecap':'round', 'stroke-linejoin':'round'}, g);
+  el('path', {d, fill:'none', stroke:'var(--route)', 'stroke-width':10, 'stroke-linecap':'round', 'stroke-linejoin':'round'}, g);
+  el('path', {d, fill:'none', stroke:'#fff', 'stroke-opacity':.55, 'stroke-width':3, 'stroke-dasharray':'8 32', 'stroke-linecap':'round', class:'flow'}, g);
+  const ag = el('g', {}, g); arrowsAlong(current.pts, 70, 7, ag, '#fff');
+  el('path', {id:'segHi', d:'', fill:'none', stroke:'var(--you)', 'stroke-width':4, 'stroke-opacity':.9, 'stroke-linecap':'round'}, g);
+}
+function fitLoop(){ const xs = poly(LOOP).map(p=>p[0]), ys = poly(LOOP).map(p=>p[1]); fitBounds(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), 30); }
+function fitRoute(){
+  if (!current){ fitLoop(); return; }
+  const xs = current.pts.map(p=>p[0]), ys = current.pts.map(p=>p[1]);
+  fitBounds(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), 50);
+}
+
+/* ---------- Wegbeschreibung aus der Geometrie ---------- */
+const COMPASS = ['Osten','Südosten','Süden','Südwesten','Westen','Nordwesten','Norden','Nordosten'];
+const heading = (a,b) => COMPASS[(Math.round(Math.atan2(b[1]-a[1], b[0]-a[0]) / (Math.PI/4)) + 8) % 8];
+const ICONS = {
+  start:'<path d="M12 21V4M12 4l-5 5M12 4l5 5"/>', straight:'<path d="M12 21V4M12 4l-5 5M12 4l5 5"/>',
+  left:'<path d="M17 21v-8a4 4 0 0 0-4-4H5M5 9l4-4M5 9l4 4"/>', right:'<path d="M7 21v-8a4 4 0 0 1 4-4h8M19 9l-4-4M19 9l-4 4"/>',
+  sleft:'<path d="M15 21v-7L8 6M8 6v5M8 6h5"/>', sright:'<path d="M9 21v-7l7-8M16 6v5M16 6h-5"/>',
+  uleft:'<path d="M15 21V9a4 4 0 0 0-8 0v4M7 13l-3-3M7 13l3-3"/>', uright:'<path d="M9 21V9a4 4 0 0 1 8 0v4M17 13l-3-3M17 13l3-3"/>',
+  goal:'<path d="M6 21V4M6 4h11l-2 4 2 4H6"/>',
+};
+function buildSteps(keys){
+  const pts = poly(keys), steps = [];
+  steps.push({icon:'start', text:`Bei <b>${PLACES[keys[0]].mark}</b> (${PLACES[keys[0]].name}) losfahren, Richtung ${heading(pts[0], pts[1])}.`, i0:0, i1:1});
+  for (let i=1;i<keys.length-1;i++){
+    const a = pts[i-1], b = pts[i], c = pts[i+1];
+    const v1 = [b[0]-a[0], b[1]-a[1]], v2 = [c[0]-b[0], c[1]-b[1]];
+    const cross = v1[0]*v2[1] - v1[1]*v2[0], dot = v1[0]*v2[0] + v1[1]*v2[1];
+    const ang = Math.atan2(Math.abs(cross), dot) * 180/Math.PI, right = cross > 0;
+    const place = PLACES[keys[i]];
+    if (place){ steps.push({icon:'straight', text:`Vorbei an <b>${place.mark}</b> (${place.name}), weiter geradeaus.`, i0:i, i1:i+1}); continue; }
+    if (ang < 22){ steps[steps.length-1].i1 = i+1; continue; }
+    let icon, word;
+    if (ang < 55){ icon = right?'sright':'sleft'; word = right?'Leicht rechts halten':'Leicht links halten'; }
+    else if (ang < 130){ icon = right?'right':'left'; word = right?'Rechts abbiegen':'Links abbiegen'; }
+    else { icon = right?'uright':'uleft'; word = right?'Scharf rechts abbiegen':'Scharf links abbiegen'; }
+    steps.push({icon, text:`${word}, Richtung ${heading(b, c)}.`, i0:i, i1:i+1});
+  }
+  const last = keys[keys.length-1];
+  steps.push({icon:'goal', text:`Ziel: <b>${PLACES[last].mark==='EXIT'?'Ausfahrt':PLACES[last].mark}</b> (${PLACES[last].name}).`, i0:keys.length-1, i1:keys.length-1});
+  return steps;
+}
+
+/* ---------- Tafel ---------- */
+const panel = $('#panel');
+const badge = (k, cls='') => `<span class="badge ${k==='EXIT'?'exit':''} ${cls}">${k==='EXIT'?'EXIT':PLACES[k].mark}</span>`;
+function showChooseStart(){
+  current = null; drawRoute(); drawPins(null, null); fitLoop(); $('#hsub').textContent = 'Werftgelände Winterhafen';
+  panel.innerHTML = `<p class="eyebrow">Wo stehen Sie?</p><div class="choices">${Object.keys(ALLOWED).map(k =>
+    `<button class="choice" data-from="${k}">${badge(k)}<span>${PLACES[k].name}<small>${PLACES[k].hint}</small></span></button>`).join('')}</div>`;
+  panel.querySelectorAll('[data-from]').forEach(b => b.onclick = () => go(b.dataset.from.toLowerCase()));
+  requestAnimationFrame(fitLoop);
+}
+function showChooseDest(from){
+  current = null; drawRoute(); drawPins(from, null); $('#hsub').textContent = `Sie sind bei ${PLACES[from].name}`;
+  panel.innerHTML = `<p class="eyebrow">Sie stehen bei ${PLACES[from].mark} · Wohin möchten Sie?</p><div class="choices">${ALLOWED[from].map(k =>
+    `<button class="choice" data-to="${k}">${badge(k,'dest')}<span>${PLACES[k].name}<small>${PLACES[k].hint}</small></span></button>`).join('')}</div>
+    <div class="row"><a class="btn" href="#">Anderer Startpunkt</a></div>`;
+  panel.querySelectorAll('[data-to]').forEach(b => b.onclick = () => go(`${from}-${b.dataset.to}`.toLowerCase()));
+  requestAnimationFrame(() => fitBounds(P[from][0]-260, P[from][1]-200, P[from][0]+260, P[from][1]+200, 0));
+}
+function showRoute(from, to){
+  const keys = ROUTES[`${from}-${to}`]; const pts = poly(keys); const cum = [0];
+  for (let i=1;i<pts.length;i++) cum.push(cum[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+  current = {from, to, keys, pts, cum, total:cum[cum.length-1], steps:buildSteps(keys)};
+  drawRoute(); drawPins(from, to); $('#hsub').textContent = `${PLACES[from].mark} → ${to==='EXIT'?'Ausfahrt':PLACES[to].mark}`;
+  const m = px => GEO ? `${Math.round(px/GEO.scale/5)*5} m` : '';
+  panel.innerHTML = `
+    <div class="routehead">${badge(from)}<span class="arrow">→</span>${badge(to,'dest')}
+      <div class="names"><b>${PLACES[to].name}</b><span>von ${PLACES[from].name}</span></div></div>
+    <div class="status"><span class="big" id="remain">${GEO ? m(current.total) : current.steps.length-1 + ' Schritte'}</span><span class="note" id="note">${GEO ? 'Gesamtstrecke' : 'Folgen Sie der orangen Linie.'}</span></div>
+    <ol class="steps">${current.steps.map((s,i) => `<li data-i="${i}"><button><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICONS[s.icon]}</svg></span><span>${s.text}</span><span class="m">${GEO && s.i1>s.i0 ? m(current.cum[s.i1]-current.cum[s.i0]) : ''}</span></button></li>`).join('')}</ol>
+    <div class="row">${ALLOWED[from].length>1 ? `<a class="btn" href="#${from.toLowerCase()}">Anderes Ziel</a>` : ''}<a class="btn" href="#">Neu starten</a></div>`;
+  panel.querySelectorAll('ol.steps li').forEach(li => li.querySelector('button').onclick = () => focusStep(+li.dataset.i));
+  $('#arrived').hidden = true; arrivedShown = false; follow = !!GEO;
+  requestAnimationFrame(fitRoute);
+  startGPS();
+}
+function focusStep(i){
+  const s = current.steps[i]; const seg = current.pts.slice(s.i0, Math.max(s.i0+1, s.i1)+1);
+  panel.querySelectorAll('ol.steps li').forEach(li => li.classList.toggle('on', +li.dataset.i === i));
+  $('#segHi').setAttribute('d', seg.length>1 ? smoothD(seg) : '');
+  const xs = seg.map(p=>p[0]), ys = seg.map(p=>p[1]); follow = false;
+  fitBounds(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), 90);
+}
+
+/* ---------- GPS ---------- */
+// nächster Punkt auf einer Linie: Abstand d, Weg s ab Anfang, Punkt pt
+function project(pts, p){ let best = {d:1e9, s:0, pt:pts[0]}, acc = 0;
+  for (let i=1;i<pts.length;i++){ const a = pts[i-1], b = pts[i]; const vx=b[0]-a[0], vy=b[1]-a[1]; const L2 = vx*vx+vy*vy, L = Math.sqrt(L2);
+    const t = Math.max(0, Math.min(1, ((p[0]-a[0])*vx + (p[1]-a[1])*vy)/L2)); const q = [a[0]+t*vx, a[1]+t*vy];
+    const d = Math.hypot(p[0]-q[0], p[1]-q[1]); if (d < best.d) best = {d, s:acc + t*L, pt:q}; acc += L; }
+  return best; }
+let watchId = null, follow = true, lastPx = null, arrivedShown = false;
+function setPill(cls, txt){ const p = $('#gps'); p.className = 'gps-pill ' + cls; $('#gpstxt').textContent = txt; }
+function startGPS(){
+  if (!GEO){ setPill('', 'Plan-Ansicht (ohne GPS)'); return; }
+  if (!('geolocation' in navigator)){ setPill('warn', 'Dieses Gerät liefert keinen Standort'); return; }
+  if (watchId !== null) return;
+  setPill('', 'Standort wird gesucht …');
+  try {
+    watchId = navigator.geolocation.watchPosition(onPos, onPosErr, {enableHighAccuracy:true, maximumAge:2000, timeout:20000});
+  } catch(e){ setPill('warn', 'Standort hier nicht verfügbar'); }
+}
+function onPosErr(err){
+  if (err.code === 1) setPill('warn', 'Standortfreigabe abgelehnt · Plan-Ansicht');
+  else setPill('warn', 'Kein GPS-Signal · Plan-Ansicht');
+}
+function onPos(pos){
+  const {latitude, longitude, accuracy} = pos.coords; const raw = GEO.toPx(latitude, longitude);
+  const net = current ? current.pts : poly(LOOP); const pr = project(net, raw);
+  const snapped = pr.d/GEO.scale < SNAP_M; const p = snapped ? pr.pt : raw; lastPx = p;
+  const g = $('#me'); g.innerHTML = '';
+  el('circle', {cx:p[0], cy:p[1], r:Math.max(10, accuracy*GEO.scale), fill:'var(--you)', 'fill-opacity':.12, stroke:'var(--you)', 'stroke-opacity':.35}, g);
+  el('circle', {cx:p[0], cy:p[1], r:11, fill:'var(--you)', stroke:'#fff', 'stroke-width':3}, g);
+  $('#locate').hidden = false;
+  const inside = p[0] > -200 && p[1] > -200 && p[0] < MAP_W+200 && p[1] < MAP_H+200;
+  if (!inside){ setPill('warn', 'Sie sind außerhalb des Plans'); return; }
+  setPill('live', `Live · Genauigkeit ±${Math.round(accuracy)} m`);
+  if (!current) return;
+  const best = project(current.pts, raw);
+  const remain = (current.total - best.s)/GEO.scale, off = best.d/GEO.scale;
+  $('#remain').textContent = `noch ${Math.max(0, Math.round(remain/5)*5)} m`;
+  $('#note').textContent = off > OFFROUTE_M ? `Sie sind ${Math.round(off)} m neben der Route` : 'bis zum Ziel';
+  current.steps.forEach((s,i) => { const li = panel.querySelector(`li[data-i="${i}"]`); if (li) li.classList.toggle('done', current.cum[s.i1] < best.s - 5*GEO.scale); });
+  const dDest = best.d/GEO.scale < SNAP_M ? remain : Math.hypot(raw[0]-P[current.to][0], raw[1]-P[current.to][1]) / GEO.scale;
+  if (dDest < ARRIVE_M && !arrivedShown){ arrivedShown = true; $('#arrT').textContent = 'Angekommen'; $('#arrS').textContent = PLACES[current.to].name; $('#arrived').hidden = false; }
+  if (follow){ fitTarget = null; const b = box(); if (vb.w > 700){ vb.w = 700; vb.h = 700*b.h/b.w; } vb.x = p[0]-vb.w/2; vb.y = p[1]-vb.h/2; clampVB(); applyVB(); }
+}
+$('#locate').onclick = () => { follow = true; if (lastPx){ const w = Math.min(vb.w, 520); const b = box(); vb = {x:lastPx[0]-w/2, y:lastPx[1]-w/b.w*b.h/2, w, h:w/b.w*b.h}; clampVB(); applyVB(); } };
+$('#arrived').onclick = () => { $('#arrived').hidden = true; };
+
+/* ---------- Einmessen ---------- */
+const fmt = v => v.toFixed(6);
+function parseLL(s){ const m = String(s).replace(/[()]/g,'').match(/(-?\d+(?:[.,]\d+)?)\s*[,; ]\s*(-?\d+(?:[.,]\d+)?)/); if (!m) return null;
+  const a = parseFloat(m[1].replace(',','.')), b = parseFloat(m[2].replace(',','.')); return (Math.abs(a)<=90 && Math.abs(b)<=180) ? [a,b] : null; }
+function calOut(){
+  const pts = {}; Object.keys(PLACES).forEach(k => { const v = parseLL($('#ll_'+k).value); if (v) pts[k] = v; });
+  $('#calOut').textContent = 'const SITE_POINTS = {\n' + Object.keys(PLACES).map(k => `  ${(k+':').padEnd(6)}${pts[k] ? `[${fmt(pts[k][0])}, ${fmt(pts[k][1])}]` : 'null'},`).join('\n') + '\n};';
+  return pts;
+}
+function showCalib(){
+  const cur = activePoints(); const list = $('#calibList');
+  list.innerHTML = Object.keys(PLACES).map(k => `<div class="card"><div class="head">${badge(k)}<b>${PLACES[k].name}</b></div>
+    <input id="ll_${k}" placeholder="z. B. 48.31234, 14.31234" value="${cur[k] ? fmt(cur[k][0])+', '+fmt(cur[k][1]) : ''}" aria-label="Koordinaten ${esc(PLACES[k].name)}">
+    <button class="btn" data-here="${k}">Hier stehe ich</button><div class="msg" id="msg_${k}"></div></div>`).join('');
+  list.querySelectorAll('input').forEach(i => i.oninput = calOut);
+  list.querySelectorAll('[data-here]').forEach(b => b.onclick = () => measureHere(b.dataset.here));
+  calOut(); calInfo();
+}
+function calInfo(){
+  $('#calInfo').textContent = GEO ? `Aktiv mit ${GEO.n} Punkten · an den Punkten exakt angepasst (Restfehler vorher ${GEO.maxResid.toFixed(0)} m)${GEO.n<3?' · mit 3–4 Punkten wird es genauer':''}` : 'Noch nicht eingerichtet: mindestens zwei Punkte eintragen.';
+}
+function measureHere(k){
+  const msg = $('#msg_'+k);
+  if (!('geolocation' in navigator)){ msg.textContent = 'Dieses Gerät liefert keinen Standort.'; return; }
+  msg.textContent = 'Messe 10 Sekunden … bitte stillstehen.'; const got = [];
+  let id; try { id = navigator.geolocation.watchPosition(p => { got.push(p.coords); msg.textContent = `${got.length} Messungen, ±${Math.round(p.coords.accuracy)} m …`; },
+    e => { msg.textContent = e.code===1 ? 'Standortfreigabe abgelehnt.' : 'Kein GPS-Signal.'; }, {enableHighAccuracy:true, maximumAge:0, timeout:15000}); }
+  catch(e){ msg.textContent = 'Standort hier nicht verfügbar.'; return; }
+  setTimeout(() => { navigator.geolocation.clearWatch(id); if (!got.length) return;
+    const best = got.filter(c => c.accuracy <= Math.min(...got.map(g=>g.accuracy))*1.5);
+    const lat = best.reduce((s,c)=>s+c.latitude,0)/best.length, lon = best.reduce((s,c)=>s+c.longitude,0)/best.length;
+    $('#ll_'+k).value = fmt(lat)+', '+fmt(lon); msg.textContent = `Übernommen (±${Math.round(Math.min(...best.map(c=>c.accuracy)))} m)`; calOut(); }, 10000);
+}
+$('#calSave').onclick = () => { const pts = calOut(); try { localStorage.setItem('navPoints', JSON.stringify(pts)); } catch(e){} buildGeo(); calInfo(); };
+$('#calReset').onclick = () => { try { localStorage.removeItem('navPoints'); } catch(e){} buildGeo(); showCalib(); };
+$('#calCopy').onclick = () => { const t = $('#calOut').textContent;
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('#calOut')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); };
+  try { navigator.clipboard.writeText(t).then(() => { $('#calCopy').textContent = 'Kopiert'; }, sel); } catch(e){ sel(); } };
+
+/* ---------- QR-Schilder ---------- */
+const SIGNS = [
+  {hash:'a',      L:'A', title:'Standort A',   text:'Weg zur Warenannahme oder zum Blechlager'},
+  {hash:'b-exit', L:'B', title:'Warenannahme', text:'Weg zur Ausfahrt'},
+  {hash:'c-exit', L:'C', title:'Blechlager',   text:'Weg zur Ausfahrt'},
+  {hash:'a-b',    L:'A', title:'A → Warenannahme', text:'Für Einladung oder Lieferschein'},
+  {hash:'a-c',    L:'A', title:'A → Blechlager',   text:'Für Einladung oder Lieferschein'},
+];
+function qrSVG(text){
+  if (!window.qrcode) return '<p>QR-Bibliothek wird geladen …</p>';
+  const q = qrcode(0, 'M'); q.addData(text); q.make(); const n = q.getModuleCount(), m = 2; let d = '';
+  for (let r=0;r<n;r++) for (let c=0;c<n;c++) if (q.isDark(r,c)) d += `M${c+m} ${r+m}h1v1h-1z`;
+  return `<svg viewBox="0 0 ${n+2*m} ${n+2*m}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+function showQR(){
+  const inp = $('#qrBase'); if (!inp.value) inp.value = location.href.split('#')[0];
+  const render = () => { const base = inp.value.trim().split('#')[0];
+    $('#signs').innerHTML = SIGNS.map(s => `<div class="sign"><div class="lt"><span class="L">${s.L}</span><span class="t">${esc(s.title)}</span></div>
+      <div class="q">${qrSVG(base + '#' + s.hash)}</div><b>Scannen: ${esc(s.text)}</b><small>${esc(base + '#' + s.hash)}</small></div>`).join(''); };
+  inp.oninput = render; render();
+  if (!window.qrcode){ let n = 0; const t = setInterval(() => { if (window.qrcode || ++n > 40){ clearInterval(t); render(); } }, 250); }
+}
+
+/* ---------- Navigation über den #-Anker ---------- */
+function go(h){ location.hash = h; }
+function route(){
+  const h = location.hash.replace('#','').toLowerCase();
+  $('#pgCalib').hidden = h !== 'einmessen'; $('#pgQR').hidden = h !== 'qr';
+  if (h === 'einmessen'){ showCalib(); return; }
+  if (h === 'qr'){ showQR(); return; }
+  const parts = h.split('-').map(s => s.toUpperCase()); const from = parts[0], to = parts[1];
+  if (from && ALLOWED[from]){
+    if (to && ALLOWED[from].includes(to)) return showRoute(from, to);
+    if (ALLOWED[from].length === 1) return showRoute(from, ALLOWED[from][0]);
+    return showChooseDest(from);
+  }
+  showChooseStart();
+}
+buildGeo(); drawLoop(); applyVB();
+window.addEventListener('hashchange', route);
+requestAnimationFrame(route);
+</script>
+
+</body>
+</html>
