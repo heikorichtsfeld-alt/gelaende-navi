@@ -9,8 +9,9 @@ Navigation am Werftgelände per QR-Code und GPS. Die ganze App ist die Datei `in
 - Beliebige Route: `/#<von>-<nach>`, z. B. `/#standort-w16` · Ziel ab aktuellem Standort: `/#ziel-m47`
 - QR-Schilder erzeugen: `/#qr`
 
-Die Hauptrouten folgen der Einbahn-Runde: hin über die Oststraße, zurück über die Westseite (Kai).
-Alle anderen Ziele: kürzester Weg über die Verkehrsflächen des Lageplans.
+Fahrwege = handgezeichnete Verkehrsführung (Fahrwege.pdf), inkl. getrennter Ein-/Ausfahrtsspur am Standort.
+Hauptrouten: hin über die Oststraße, zurück über die Westseite (Kai). Alle anderen Ziele: kürzester erlaubter Weg.
+Halle 47: LKW nur rückwärts anfahren (Hinweis in der Wegbeschreibung).
 
 ## Ziele
 `standort`, `m50` (Warenannahme), `pallg`, `pgast1`, `pgast2`,
