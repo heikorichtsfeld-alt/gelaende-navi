@@ -17,3 +17,7 @@ Halle 47: LKW nur rückwärts anfahren (Hinweis in der Wegbeschreibung).
 `standort`, `m50` (Warenannahme), `pallg`, `pgast1`, `pgast2`,
 ÖSWAG Maschinenbau `m1 m3 m9 m9d m14 m33 m46 m46b m47 m48 m52 m54 m55 m56`,
 ÖSWAG Werft Linz `w10 w10d w13 w16 w46 w46b`. Positionen aus den GPS-Daten der Gebäudeeingänge.
+
+## Sprachen
+Deutsch, English, Русский, Українська, Türkçe, Shqip, Slovenščina, Čeština – Umschaltung über die Flagge oben rechts.
+Startet in der Sprache des Handys, die Auswahl wird gemerkt. Texte: `i18n.json` (eingebettet in index.html).
