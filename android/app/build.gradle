@@ -1,0 +1,15 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'at.winterhafen.navi'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'at.winterhafen.navi'
+        minSdk 24
+        targetSdk 34
+        versionCode (project.findProperty('vCode') ?: '1') as int
+        versionName '1.' + (project.findProperty('vCode') ?: '1')
+    }
+    buildTypes { release { minifyEnabled false } }   // unsigniert; signiert wird außerhalb des Repos
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies { implementation 'androidx.webkit:webkit:1.11.0' }
