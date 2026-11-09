@@ -21,3 +21,8 @@ Halle 47: LKW nur rückwärts anfahren (Hinweis in der Wegbeschreibung).
 ## Sprachen
 Deutsch, English, Русский, Українська, Türkçe, Shqip, Slovenščina, Čeština – Umschaltung über die Flagge oben rechts.
 Startet in der Sprache des Handys, die Auswahl wird gemerkt. Texte: `i18n.json` (eingebettet in index.html).
+
+## Android-App
+
+Download: https://heikorichtsfeld-alt.github.io/gelaende-navi/apk/gelaende-navi.apk
+Die App enthält die Karte offline. Ordner `android/` = Quellcode; GitHub Actions baut bei jeder Änderung an `index.html` eine unsignierte APK (Branch `apk-build`), signiert wird außerhalb des Repos.
