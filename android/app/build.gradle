@@ -6,8 +6,9 @@ android {
         applicationId 'at.winterhafen.navi'
         minSdk 24
         targetSdk 34
-        versionCode (project.findProperty('vCode') ?: '1') as int
-        versionName '1.' + (project.findProperty('vCode') ?: '1')
+        def vc = (project.findProperty('vCode') ?: '1').toString().toInteger()
+        versionCode vc
+        versionName "1.${vc}"
     }
     buildTypes { release { minifyEnabled false } }   // unsigniert; signiert wird außerhalb des Repos
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
